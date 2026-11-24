@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Movie List</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
+    form, .row { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    input { padding: .5rem; }
+    button { padding: .5rem .8rem; cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: .5rem; border-bottom: 1px solid #ddd; }
+    .error { color: #b00020; }
+  </style>
+</head>
+<body>
+  <h1>Movie List</h1>
+
+  <div class="row">
+    <input id="search" placeholder="Search title or genre">
+    <button id="searchBtn">Search</button>
+    <button id="clearBtn">Clear</button>
+  </div>
+
+  <form id="form">
+    <input id="title"  placeholder="Title" required>
+    <input id="year"   placeholder="Year" type="number" style="width:90px">
+    <input id="genre"  placeholder="Genre">
+    <input id="rating" placeholder="Rating 0-10" type="number" min="0" max="10" step="0.1" style="width:110px">
+    <button type="submit" id="saveBtn">Add movie</button>
+    <button type="button" id="cancelBtn" hidden>Cancel edit</button>
+  </form>
+  <p class="error" id="error"></p>
+
+  <table>
+    <thead><tr><th>Title</th><th>Year</th><th>Genre</th><th>Rating</th><th></th></tr></thead>
+    <tbody id="list"></tbody>
+  </table>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let editingId = null;
+
+  async function loadMovies() {
+    const search = $('search').value.trim();
+    const res = await fetch('/api/movies' + (search ? '?search=' + encodeURIComponent(search) : ''));
+    const movies = await res.json();
+    $('list').innerHTML = movies.length ? '' : '<tr><td colspan="5">No movies found</td></tr>';
+    for (const m of movies) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td></td><td>${m.year ?? ''}</td><td></td><td>${m.rating ?? ''}</td>
+        <td><button data-edit>Edit</button> <button data-del>Delete</button></td>`;
+      tr.children[0].textContent = m.title;   // textContent avoids HTML injection
+      tr.children[2].textContent = m.genre || '';
+      tr.querySelector('[data-edit]').onclick = () => startEdit(m);
+      tr.querySelector('[data-del]').onclick = () => remove(m._id);
+      $('list').appendChild(tr);
+    }
+  }
+
+  function startEdit(m) {
+    editingId = m._id;
+    $('title').value = m.title;
+    $('year').value = m.year ?? '';
+    $('genre').value = m.genre ?? '';
+    $('rating').value = m.rating ?? '';
+    $('saveBtn').textContent = 'Update movie';
+    $('cancelBtn').hidden = false;
+    $('title').focus();
+  }
+
+  function resetForm() {
+    editingId = null;
+    $('form').reset();
+    $('saveBtn').textContent = 'Add movie';
+    $('cancelBtn').hidden = true;
+  }
+
+  async function remove(id) {
+    if (!confirm('Delete this movie?')) return;
+    await fetch('/api/movies/' + id, { method: 'DELETE' });
+    loadMovies();
+  }
+
+  $('form').onsubmit = async (e) => {
+    e.preventDefault();
+    $('error').textContent = '';
+    const body = {
+      title: $('title').value,
+      year: $('year').value || undefined,
+      genre: $('genre').value,
+      rating: $('rating').value || undefined,
+    };
+    const res = await fetch('/api/movies' + (editingId ? '/' + editingId : ''), {
+      method: editingId ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) { $('error').textContent = (await res.json()).error; return; }
+    resetForm();
+    loadMovies();
+  };
+
+  $('cancelBtn').onclick = resetForm;
+  $('searchBtn').onclick = loadMovies;
+  $('search').onkeydown = (e) => { if (e.key === 'Enter') loadMovies(); };
+  $('clearBtn').onclick = () => { $('search').value = ''; loadMovies(); };
+
+  loadMovies();
+</script>
+</body>
+</html>
